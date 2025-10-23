@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFS 서버 작동 과정</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 40px;
+            font-size: 2em;
+        }
+
+        .stage {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 60px 0;
+            min-height: 300px;
+            position: relative;
+        }
+
+        .component {
+            position: relative;
+            text-align: center;
+        }
+
+        .box {
+            width: 180px;
+            height: 180px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+
+        .box:hover {
+            transform: translateY(-5px);
+        }
+
+        .client {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .server {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .storage {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+
+        .icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        .label {
+            font-size: 1.1em;
+            font-weight: bold;
+        }
+
+        .arrow {
+            position: absolute;
+            height: 3px;
+            background: #ffd700;
+            transform-origin: left center;
+            opacity: 0;
+            box-shadow: 0 0 10px #ffd700;
+        }
+
+        .arrow::after {
+            content: '';
+            position: absolute;
+            right: -10px;
+            top: -6px;
+            width: 0;
+            height: 0;
+            border-left: 15px solid #ffd700;
+            border-top: 7px solid transparent;
+            border-bottom: 7px solid transparent;
+        }
+
+        .message {
+            position: absolute;
+            background: #ffd700;
+            color: #333;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            opacity: 0;
+            white-space: nowrap;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+        }
+
+        .description {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .description p {
+            font-size: 1.1em;
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1em;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .start-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .restart-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @keyframes slideIn {
+            from {
+                width: 0;
+                opacity: 0;
+            }
+            to {
+                width: var(--arrow-width);
+                opacity: 1;
+            }
+        }
+
+        @keyframes messageMove {
+            0% {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            10% {
+                opacity: 1;
+                transform: translateX(0);
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+        }
+
+        .active {
+            animation: pulse 1s ease-in-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖥️ NFS 서버 작동 과정</h1>
+        
+        <div class="description">
+            <p id="stepDesc">시작 버튼을 눌러 NFS(Network File System)의 작동 과정을 확인하세요</p>
+        </div>
+
+        <div class="stage" id="stage">
+            <div class="component">
+                <div class="box client" id="client">
+                    <div class="icon">💻</div>
+                    <div class="label">클라이언트</div>
+                </div>
+            </div>
+
+            <div class="component">
+                <div class="box server" id="server">
+                    <div class="icon">🖥️</div>
+                    <div class="label">NFS 서버</div>
+                </div>
+            </div>
+
+            <div class="component">
+                <div class="box storage" id="storage">
+                    <div class="icon">💾</div>
+                    <div class="label">스토리지</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="start-btn" id="startBtn">시작</button>
+            <button class="restart-btn" id="restartBtn" disabled>다시 시작</button>
+        </div>
+    </div>
+
+    <script>
+        const steps = [
+            {
+                desc: "1단계: 클라이언트가 NFS 서버에 마운트 요청을 보냅니다",
+                from: "client",
+                to: "server",
+                message: "MOUNT 요청",
+                duration: 2000
+            },
+            {
+                desc: "2단계: NFS 서버가 마운트 요청을 승인하고 파일 핸들을 반환합니다",
+                from: "server",
+                to: "client",
+                message: "파일 핸들",
+                duration: 2000
+            },
+            {
+                desc: "3단계: 클라이언트가 파일 읽기/쓰기 요청을 보냅니다",
+                from: "client",
+                to: "server",
+                message: "READ/WRITE",
+                duration: 2000
+            },
+            {
+                desc: "4단계: NFS 서버가 실제 스토리지에 접근합니다",
+                from: "server",
+                to: "storage",
+                message: "I/O 작업",
+                duration: 2000
+            },
+            {
+                desc: "5단계: 스토리지에서 데이터를 읽어 NFS 서버로 반환합니다",
+                from: "storage",
+                to: "server",
+                message: "데이터",
+                duration: 2000
+            },
+            {
+                desc: "6단계: NFS 서버가 클라이언트에게 결과를 전송합니다",
+                from: "server",
+                to: "client",
+                message: "응답 데이터",
+                duration: 2000
+            },
+            {
+                desc: "완료! NFS를 통한 파일 공유가 성공적으로 이루어졌습니다 ✅",
+                from: null,
+                to: null,
+                message: "",
+                duration: 2000
+            }
+        ];
+
+        let currentStep = 0;
+        let isAnimating = false;
+
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const stepDesc = document.getElementById('stepDesc');
+        const stage = document.getElementById('stage');
+
+        function getPosition(elementId) {
+            const el = document.getElementById(elementId);
+            const rect = el.getBoundingClientRect();
+            const stageRect = stage.getBoundingClientRect();
+            return {
+                x: rect.left - stageRect.left + rect.width / 2,
+                y: rect.top - stageRect.top + rect.height / 2
+            };
+        }
+
+        function createArrow(from, to) {
+            const fromPos = getPosition(from);
+            const toPos = getPosition(to);
+            
+            const dx = toPos.x - fromPos.x;
+            const dy = toPos.y - fromPos.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+            const arrow = document.createElement('div');
+            arrow.className = 'arrow';
+            arrow.style.left = fromPos.x + 'px';
+            arrow.style.top = fromPos.y + 'px';
+            arrow.style.transform = `rotate(${angle}deg)`;
+            arrow.style.setProperty('--arrow-width', (length - 20) + 'px');
+            arrow.style.animation = 'slideIn 0.8s ease-out forwards';
+
+            stage.appendChild(arrow);
+            return arrow;
+        }
+
+        function createMessage(from, to, text) {
+            const fromPos = getPosition(from);
+            const toPos = getPosition(to);
+            
+            const message = document.createElement('div');
+            message.className = 'message';
+            message.textContent = text;
+            message.style.left = (fromPos.x + toPos.x) / 2 + 'px';
+            message.style.top = (fromPos.y + toPos.y) / 2 - 30 + 'px';
+            message.style.animation = 'messageMove 2s ease-in-out forwards';
+
+            stage.appendChild(message);
+            return message;
+        }
+
+        function animateStep(step) {
+            stepDesc.textContent = step.desc;
+
+            if (step.from && step.to) {
+                const fromEl = document.getElementById(step.from);
+                const toEl = document.getElementById(step.to);
+                
+                fromEl.classList.add('active');
+                setTimeout(() => toEl.classList.add('active'), 400);
+
+                const arrow = createArrow(step.from, step.to);
+                const message = createMessage(step.from, step.to, step.message);
+
+                setTimeout(() => {
+                    arrow.remove();
+                    message.remove();
+                    fromEl.classList.remove('active');
+                    toEl.classList.remove('active');
+                }, step.duration);
+            }
+        }
+
+        async function runAnimation() {
+            isAnimating = true;
+            startBtn.disabled = true;
+            restartBtn.disabled = true;
+
+            for (let i = 0; i < steps.length; i++) {
+                currentStep = i;
+                animateStep(steps[i]);
+                await new Promise(resolve => setTimeout(resolve, steps[i].duration));
+            }
+
+            isAnimating = false;
+            restartBtn.disabled = false;
+        }
+
+        startBtn.addEventListener('click', () => {
+            runAnimation();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            currentStep = 0;
+            stepDesc.textContent = "시작 버튼을 눌러 NFS(Network File System)의 작동 과정을 확인하세요";
+            startBtn.disabled = false;
+            restartBtn.disabled = true;
+            
+            const arrows = stage.querySelectorAll('.arrow');
+            const messages = stage.querySelectorAll('.message');
+            arrows.forEach(el => el.remove());
+            messages.forEach(el => el.remove());
+        });
+    </script>
+</body>
+</html>
